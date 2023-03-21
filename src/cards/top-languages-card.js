@@ -245,8 +245,34 @@ const calculateNormalLayoutHeight = (totalLangs) => {
  * @param {string} langs_count Number of languages to show.
  */
 const useLanguages = (topLangs, hide, langs_count) => {
+  console.log({ hide, langs_count, topLangs });
   let langs = Object.values(topLangs);
+
+  const defaultLanguagesToHide = [
+    "Objective-C++",
+    "c++",
+    "objective-c",
+    "java",
+    "cmake",
+    "css",
+    "Starlark",
+    "C",
+    "Procfile",
+    "Smalltalk",
+    "Kotlin",
+    "Ruby",
+    "Swift",
+    "C#",
+    "EJS",
+    "Makefile",
+  ];
+
   let langsToHide = {};
+
+  defaultLanguagesToHide.forEach((languageName) => {
+    langsToHide[lowercaseTrim(languageName)] = true;
+  });
+
   let langsCount = clampValue(parseInt(langs_count), 1, 10);
 
   // populate langsToHide map for quick lookup
@@ -291,7 +317,7 @@ const renderTopLanguages = (topLangs, options = {}) => {
     layout,
     custom_title,
     locale,
-    langs_count = DEFAULT_LANGS_COUNT,
+    langs_count = Object.keys(topLangs).length,
     border_radius,
     border_color,
     disable_animations,

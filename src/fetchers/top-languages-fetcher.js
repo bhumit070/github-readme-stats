@@ -16,13 +16,26 @@ import {
  * @returns {Promise<import('../common/types').StatsFetcherResponse>} Languages fetcher response.
  */
 const fetcher = (variables, token) => {
+  const afterCursor = variables._cursor
+    ? `, after: "${variables._cursor}"`
+    : "";
+
   return request(
     {
       query: `
       query userInfo($login: String!) {
         user(login: $login) {
           # fetch only owner repos & not forks
-          repositories(ownerAffiliations: OWNER, isFork: false, first: 100) {
+          repositories(
+              ownerAffiliations: OWNER, 
+              isFork: false, 
+              first: 100
+              ${afterCursor ? afterCursor : ""}
+            ) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               name
               languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
@@ -54,18 +67,31 @@ const fetcher = (variables, token) => {
  * @param {string[]} exclude_repo List of repositories to exclude.
  * @returns {Promise<import("./types").TopLangData>} Top languages data.
  */
-const fetchTopLanguages = async (username, exclude_repo = []) => {
-  if (!username) throw new MissingParamError(["username"]);
 
-  const res = await retryer(fetcher, { login: username });
+async function recursivelyFetchData(username, data = [], nextCursor = "") {
+  const variables = {
+    login: username,
+    _cursor: nextCursor ? nextCursor : null,
+  };
+  const res = await retryer(fetcher, variables);
 
-  if (res.data.errors) {
+  const paginationInfo = res?.data?.data?.user?.repositories?.pageInfo;
+
+  const repositoryInfo = res?.data?.data?.user?.repositories?.nodes || [];
+
+  data = [...data, ...repositoryInfo];
+
+  if (paginationInfo?.hasNextPage) {
+    return recursivelyFetchData(username, data, paginationInfo.endCursor);
+  }
+
+  if (res?.data?.errors) {
     logger.error(res.data.errors);
     throw Error(res.data.errors[0].message || "Could not fetch user");
   }
 
   // Catch GraphQL errors.
-  if (res.data.errors) {
+  if (res?.data?.errors) {
     logger.error(res.data.errors);
     if (res.data.errors[0].type === "NOT_FOUND") {
       throw new CustomError(
@@ -85,7 +111,15 @@ const fetchTopLanguages = async (username, exclude_repo = []) => {
     );
   }
 
-  let repoNodes = res.data.data.user.repositories.nodes;
+  return data;
+}
+
+const fetchTopLanguages = async (username, exclude_repo = []) => {
+  if (!username) throw new MissingParamError(["username"]);
+
+  const res = await recursivelyFetchData(username);
+
+  let repoNodes = res;
   let repoToHide = {};
 
   // populate repoToHide map for quick lookup
